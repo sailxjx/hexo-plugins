@@ -1,16 +1,31 @@
 var extend = hexo.extend,
     util = hexo.util,
     fs = require('fs'),
-    async = require('async');
+    async = require('async'),
+    exec = require('child_process').exec;
 
 extend.migrator.register('octopress', function(args){
   var source = args._.shift(),
-      target = hexo.source_dir + '_posts/';
-
+      target = hexo.source_dir + '_posts/',
+      tmpFlag = false;
   if (!source){
     console.log('\nUsage: hexo migrate octopress <source>\n\nMore info: http://zespia.tw/hexo/docs/migrate.html\n');
   } else {
     async.waterfall([
+      function(next) {
+        if (/^git(\@|\:\/\/).*?\.git$/.test(source)) {  // migrate from a github source
+          console.log('Fetching remote source from %s', source);
+          exec('rm -rf .migrate && git clone ' +  source + ' .migrate', function(err, stdout, stderr) {
+            if (err) throw err;
+            console.log(stdout);
+            source = '.migrate';
+            tmpFlag = true;
+            next();
+          });
+        } else {
+          next();
+        }
+      },
       function(next) {
         postDir = source + '/source/_posts/';
         console.log('Migrating posts from %s.', postDir);
@@ -46,6 +61,17 @@ extend.migrator.register('octopress', function(args){
           next();
         });
         next();
+      },
+      function(next) {
+        if (tmpFlag) {
+          exec('rm -rf .migrate', function(err, stdout, stderr) {
+            if (err) throw err;
+            console.log('Delete temporary files');
+            next();
+          });
+        } else {
+          next();
+        }
       }
     ],function(err, result){
       if (err) throw err;
